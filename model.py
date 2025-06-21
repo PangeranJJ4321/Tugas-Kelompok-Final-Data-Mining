@@ -8,151 +8,215 @@ from typing import Tuple, Dict, Any, List
 from collections import Counter
 
 # ML libraries
-from sklearn.model_selection import train_test_split, GridSearchCV, StratifiedKFold
+from sklearn.model_selection import train_test_split, GridSearchCV, StratifiedKFold, RandomizedSearchCV
 from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
+from sklearn.metrics import classification_report, accuracy_score, confusion_matrix, make_scorer, f1_score
 from sklearn.metrics import precision_recall_fscore_support
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import LabelEncoder, StandardScaler 
 import xgboost as xgb
 
 # Resampling techniques for imbalanced data
-from imblearn.over_sampling import SMOTE
+from imblearn.over_sampling import SMOTE, ADASYN
+from imblearn.under_sampling import TomekLinks, NearMiss 
 from imblearn.combine import SMOTETomek, SMOTEENN
 from imblearn.pipeline import Pipeline as ImbPipeline
 
+# Definisikan semua genre yang mungkin untuk konsistensi
+ALL_GENRES = [
+    'Action', 'Adventure', 'Animation', 'Comedy', 'Crime',
+    'Documentary', 'Drama', 'Family', 'Fantasy', 'History',
+    'Horror', 'Music', 'Mystery', 'Romance', 'Science Fiction',
+    'TV Movie', 'Thriller', 'War', 'Western'
+]
 
-# ===================== DATA PREPROCESSING =====================
+# Tambahkan atau pastikan definisi kategori ROI baru ini ada di sini juga
+ALL_ROI_CATEGORIES_ORDERED = [
+    'Extreme Loss',
+    'Significant Loss',
+    'Marginal Profit',
+    'Good Profit',
+    'Blockbuster/High Profit'
+]
+
+def _handle_genres(processed_df: pd.DataFrame) -> pd.DataFrame:
+    """Helper function to one-hot encode genres."""
+    all_genres = [
+        'Action', 'Adventure', 'Animation', 'Comedy', 'Crime',
+        'Documentary', 'Drama', 'Family', 'Fantasy', 'History',
+        'Horror', 'Music', 'Mystery', 'Romance', 'Science Fiction',
+        'TV Movie', 'Thriller', 'War', 'Western'
+    ]
+
+    if 'genres' in processed_df.columns and processed_df['genres'].notna().any():
+        processed_df['genres'] = processed_df['genres'].apply(lambda x: x.strip() if isinstance(x, str) else '')
+        genre_df = processed_df['genres'].str.get_dummies(sep=', ')
+        
+        for genre in all_genres:
+            genre_col_name = f'genre_{genre.lower().replace(" ", "_")}'
+            if genre in genre_df.columns:
+                processed_df[genre_col_name] = genre_df[genre]
+            else:
+                genre_cols_lower = [col for col in genre_df.columns if col.lower() == genre.lower()]
+                if genre_cols_lower:
+                    processed_df[genre_col_name] = genre_df[genre_cols_lower[0]]
+                else:
+                    processed_df[genre_col_name] = 0
+    else:
+        for genre in all_genres:
+            processed_df[f'genre_{genre.lower().replace(" ", "_")}'] = 0
+            
+    return processed_df
 
 def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Preprocess raw movie data to the format required for model training
-    
+    Preprocess raw movie data to the format required for model training.
+    Handles missing values and creates new features.
+
     Args:
         df: Raw dataframe with movie information
-        
+
     Returns:
         Processed dataframe ready for model training
     """
-    # Create a copy to avoid modifying original dataframe
     processed_df = df.copy()
-    
-    # Extract release year and month from release_date
-    processed_df['release_date'] = pd.to_datetime(processed_df['release_date'])
-    processed_df['release_year'] = processed_df['release_date'].dt.year
-    processed_df['release_month'] = processed_df['release_date'].dt.month
-    
-    # Calculate ROI (Return on Investment)
-    processed_df['ROI'] = ((processed_df['revenue'] - processed_df['budget']) / processed_df['budget']) * 100
-    
-    # Create ROI category based on ROI value
+
+    processed_df['release_date'] = pd.to_datetime(processed_df['release_date'], errors='coerce')
+    processed_df['release_year'] = processed_df['release_date'].dt.year.fillna(2000).astype(int)
+    processed_df['release_month'] = processed_df['release_date'].dt.month.fillna(1).astype(int)
+
+    numerical_cols = ['budget', 'popularity', 'runtime', 'vote_average', 'vote_count']
+    for col in numerical_cols:
+        if col in processed_df.columns:
+            processed_df[col] = processed_df[col].replace(0, np.nan)
+            median_val = processed_df[col].median()
+            processed_df[col].fillna(median_val, inplace=True)
+        else:
+            processed_df[col] = 0
+
+    processed_df['budget_adjusted'] = processed_df['budget'].replace(0, processed_df['budget'].median() if processed_df['budget'].median() > 0 else 1)
+
+    processed_df['ROI'] = ((processed_df['revenue'] - processed_df['budget_adjusted']) / processed_df['budget_adjusted']) * 100
+
+    # START UBAH BAGIAN INI
     conditions = [
-        (processed_df['ROI'] < -50),
-        (processed_df['ROI'] >= -50) & (processed_df['ROI'] < 0),
-        (processed_df['ROI'] >= 0) & (processed_df['ROI'] < 100),
-        (processed_df['ROI'] >= 100)
+        (processed_df['ROI'] < -75), # Extreme Loss
+        (processed_df['ROI'] >= -75) & (processed_df['ROI'] < 0), # Significant Loss
+        (processed_df['ROI'] >= 0) & (processed_df['ROI'] < 50), # Marginal Profit / Break-Even
+        (processed_df['ROI'] >= 50) & (processed_df['ROI'] < 200), # Good Profit
+        (processed_df['ROI'] >= 200) # Blockbuster / High Profit
     ]
-    choices = ['High Risk', 'Medium Risk', 'Low Risk', 'No Risk']
-    processed_df['ROI_category'] = np.select(conditions, choices, default='Unknown')
-    
-    # Create language binary features
+
+    choices_map = [
+        'Extreme Loss',
+        'Significant Loss',
+        'Marginal Profit',
+        'Good Profit',
+        'Blockbuster/High Profit'
+    ]
+    processed_df['ROI_category'] = np.select(conditions, choices_map, default='Unknown')
+
+    # Handle if any 'Unknown' still exists (walaupun seharusnya tidak jika kondisi mencakup semua kemungkinan)
+    if 'Unknown' in processed_df['ROI_category'].unique():
+        # Misalnya, tetapkan ke 'Marginal Profit' jika ada yang tidak terklasifikasi
+        processed_df.loc[processed_df['ROI_category'] == 'Unknown', 'ROI_category'] = 'Marginal Profit'
+
+
+
+    processed_df['original_language'].fillna('unknown', inplace=True)
     processed_df['lang_en'] = (processed_df['original_language'] == 'en').astype(int)
     processed_df['lang_others'] = (processed_df['original_language'] != 'en').astype(int)
-    
-    # One-hot encode genres
-    if 'genres' in processed_df.columns:
-        # Split the genre string and create binary columns
-        genre_df = processed_df['genres'].str.get_dummies(sep=', ')
-        
-        # Handle all genres from the dataset
-        all_genres = [
-            'Action', 'Adventure', 'Animation', 'Comedy', 'Crime', 
-            'Documentary', 'Drama', 'Family', 'Fantasy', 'History', 
-            'Horror', 'Music', 'Mystery', 'Romance', 'Science Fiction', 
-            'TV Movie', 'Thriller', 'War', 'Western'
-        ]
-        
-        for genre in all_genres:
-            # Format genre name for column (lowercase, replace spaces with underscores)
-            genre_col_name = f'genre_{genre.lower().replace(" ", "_")}'
-            
-            # Check if the genre exists in our one-hot encoded columns (case-insensitive)
-            genre_cols = [col for col in genre_df.columns if col.lower() == genre.lower()]
-            
-            if genre_cols:
-                # Use the first match if multiple exist
-                processed_df[genre_col_name] = genre_df[genre_cols[0]]
-            else:
-                # If genre doesn't exist in this dataset, add a column of zeros
-                processed_df[genre_col_name] = 0
-    
-    # Select and reorder columns to match the desired output format
-    # Base columns (non-genre)
+
+    processed_df = _handle_genres(processed_df)
+
     base_columns = [
         'release_year', 'release_month', 'budget', 'popularity', 'runtime',
         'vote_average', 'vote_count', 'lang_en', 'lang_others'
     ]
-    
-    # Generate genre column names
+
+    all_genres = [
+        'Action', 'Adventure', 'Animation', 'Comedy', 'Crime',
+        'Documentary', 'Drama', 'Family', 'Fantasy', 'History',
+        'Horror', 'Music', 'Mystery', 'Romance', 'Science Fiction',
+        'TV Movie', 'Thriller', 'War', 'Western'
+    ]
     genre_columns = [f'genre_{genre.lower().replace(" ", "_")}' for genre in all_genres]
-    
-    # Output columns (target variables at the end)
+
     target_columns = ['revenue', 'ROI', 'ROI_category']
-    
+
     final_columns = base_columns + genre_columns + target_columns
-    
-    # Ensure all required columns exist
+
     for col in final_columns:
         if col not in processed_df.columns:
             processed_df[col] = 0
-    
-    return processed_df[final_columns]
 
-def split_features_target(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series, pd.Series]:
+    return processed_df[final_columns]
+def split_features_target(df: pd.DataFrame, _scaler: StandardScaler = None) -> Tuple[pd.DataFrame, pd.Series, pd.Series, StandardScaler]:
     """
-    Split dataframe into features, revenue target, and ROI category target
+    Split dataframe into features, revenue target, and ROI category target.
+    Includes feature scaling for numerical features.
     
     Args:
         df: Preprocessed dataframe
+        _scaler: An optional pre-fitted StandardScaler object. If None, a new one is fitted.
         
     Returns:
-        Tuple of (features_df, revenue_target, roi_category_target)
+        Tuple of (features_df, revenue_target, roi_category_target, fitted_scaler)
     """
-    # Features for both models (excluding revenue, ROI, and ROI_category)
-    # Base columns (non-genre)
     base_columns = [
         'release_year', 'release_month', 'budget', 'popularity', 'runtime',
         'vote_average', 'vote_count', 'lang_en', 'lang_others'
     ]
     
-    # Generate genre column names
     all_genres = [
-        'Action', 'Adventure', 'Animation', 'Comedy', 'Crime', 
-        'Documentary', 'Drama', 'Family', 'Fantasy', 'History', 
-        'Horror', 'Music', 'Mystery', 'Romance', 'Science Fiction', 
+        'Action', 'Adventure', 'Animation', 'Comedy', 'Crime',
+        'Documentary', 'Drama', 'Family', 'Fantasy', 'History',
+        'Horror', 'Music', 'Mystery', 'Romance', 'Science Fiction',
         'TV Movie', 'Thriller', 'War', 'Western'
     ]
     genre_columns = [f'genre_{genre.lower().replace(" ", "_")}' for genre in all_genres]
     
     feature_cols = base_columns + genre_columns
     
-    X = df[feature_cols]
+    X = df[feature_cols].copy()
     y_regression = df['revenue']
     y_classification = df['ROI_category']
     
-    return X, y_regression, y_classification
+    numerical_features_to_scale = [
+        'budget', 'popularity', 'runtime', 'vote_average', 'vote_count',
+        'release_year', 'release_month'
+    ]
+    numerical_features_to_scale = [col for col in numerical_features_to_scale if col in X.columns]
+
+    if numerical_features_to_scale:
+        if _scaler is None:
+            _scaler = StandardScaler()
+            X[numerical_features_to_scale] = _scaler.fit_transform(X[numerical_features_to_scale])
+        else:
+            X[numerical_features_to_scale] = _scaler.transform(X[numerical_features_to_scale])
+    else:
+        _scaler = None
+
+    return X, y_regression, y_classification, _scaler
 
 
 # ===================== VISUALIZATION UTILITIES =====================
 
-def plot_class_distribution(y, title: str):
-    """Plot the distribution of classes"""
+def plot_class_distribution(y, title: str, label_encoder=None):
+    """Plot the distribution of classes."""
     plt.figure(figsize=(10, 6))
     counts = pd.Series(y).value_counts().sort_index()
-    sns.barplot(x=counts.index, y=counts.values)
+    
+    if label_encoder:
+        labels = label_encoder.inverse_transform(counts.index)
+        sns.barplot(x=labels, y=counts.values)
+    else:
+        sns.barplot(x=counts.index, y=counts.values)
+        
     plt.title(title)
     plt.xlabel('Class')
     plt.ylabel('Count')
+    plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
     plt.show()
 
@@ -161,32 +225,26 @@ def plot_resampling_comparison(y_original, y_resampled, label_encoder=None):
     """
     Plot before and after class distributions for resampling methods
     """
-    plt.figure(figsize=(12, 6))
+    plt.figure(figsize=(14, 6))
     
-    # Convert encoded values back to labels if label encoder is provided
-    if label_encoder is not None:
-        original_labels = [label_encoder.inverse_transform([i])[0] for i in range(len(np.unique(y_original)))]
-        resampled_labels = [label_encoder.inverse_transform([i])[0] for i in range(len(np.unique(y_resampled)))]
-    else:
-        original_labels = np.unique(y_original)
-        resampled_labels = np.unique(y_resampled)
+    original_labels = label_encoder.inverse_transform(np.unique(y_original)) if label_encoder else np.unique(y_original)
+    resampled_labels = label_encoder.inverse_transform(np.unique(y_resampled)) if label_encoder else np.unique(y_resampled)
 
-    # Original distribution
     plt.subplot(1, 2, 1)
     train_counts = pd.Series(y_original).value_counts().sort_index()
-    plt.bar(range(len(train_counts)), train_counts.values)
+    sns.barplot(x=original_labels, y=train_counts.values)
     plt.title('Original Class Distribution')
     plt.xlabel('Class')
     plt.ylabel('Number of Samples')
-    plt.xticks(range(len(train_counts)), original_labels)
+    plt.xticks(rotation=45, ha='right')
 
-    # Resampled distribution
     plt.subplot(1, 2, 2)
     resampled_counts = pd.Series(y_resampled).value_counts().sort_index()
-    plt.bar(range(len(resampled_counts)), resampled_counts.values)
+    sns.barplot(x=resampled_labels, y=resampled_counts.values)
     plt.title('Resampled Class Distribution')
     plt.xlabel('Class')
-    plt.xticks(range(len(resampled_counts)), resampled_labels)
+    plt.ylabel('Number of Samples')
+    plt.xticks(rotation=45, ha='right')
     
     plt.tight_layout()
     plt.show()
@@ -197,92 +255,100 @@ def plot_resampling_comparison(y_original, y_resampled, label_encoder=None):
 def find_best_resampling(X, y, class_names):
     """
     Test different resampling techniques and find the best one
+    using a fixed test set.
     """
-    # Define resampling techniques to try
     resampling_methods = {
         'SMOTE': SMOTE(random_state=42),
+        'ADASYN': ADASYN(random_state=42),
         'SMOTETomek': SMOTETomek(random_state=42),
-        'SMOTEENN': SMOTEENN(random_state=42)
+        'SMOTEENN': SMOTEENN(random_state=42),
     }
     
-    # Define classifiers
     classifiers = {
         'RandomForest': RandomForestClassifier(
             n_estimators=100, 
             class_weight='balanced_subsample',
-            random_state=42
+            random_state=42,
+            n_jobs=-1
         ),
         'XGBoost': xgb.XGBClassifier(
             n_estimators=100, 
-            scale_pos_weight=3,  # Higher weight for minority classes
-            random_state=42
+            random_state=42,
+            eval_metric='mlogloss',
+            use_label_encoder=False,
+            n_jobs=-1
         )
     }
     
     results = {}
     
-    # Split data
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
     
-    # Save test data for consistent evaluation
     test_data = (X_test, y_test)
     
-    # Test each combination
+    scorer = make_scorer(f1_score, average='macro')
+    
     for resampler_name, resampler in resampling_methods.items():
         for clf_name, clf in classifiers.items():
             print(f"\nTesting {resampler_name} with {clf_name}")
             
-            # Create and train pipeline
             pipeline = ImbPipeline([
                 ('resampler', resampler),
                 ('classifier', clf)
             ])
             
-            # Train with stratified cross-validation
-            pipeline.fit(X_train, y_train)
-            
-            # Evaluate
-            y_pred = pipeline.predict(X_test)
-            
-            # Calculate metrics focusing on minority classes
-            precision, recall, f1, _ = precision_recall_fscore_support(y_test, y_pred)
-            
-            # Store results
-            results[f"{resampler_name}_{clf_name}"] = {
-                'pipeline': pipeline,
-                'precision': precision,
-                'recall': recall,
-                'f1': f1,
-                'accuracy': accuracy_score(y_test, y_pred)
-            }
-            
-            # Show confusion matrix
-            cm = confusion_matrix(y_test, y_pred)
-            plt.figure(figsize=(8, 6))
-            sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
-                       xticklabels=class_names, 
-                       yticklabels=class_names)
-            plt.title(f'{resampler_name} with {clf_name} - Confusion Matrix')
-            plt.xlabel('Predicted')
-            plt.ylabel('Actual')
-            plt.tight_layout()
-            plt.show()
+            try:
+                pipeline.fit(X_train, y_train)
+                y_pred = pipeline.predict(X_test)
+                
+                accuracy = accuracy_score(y_test, y_pred)
+                precision, recall, f1, support = precision_recall_fscore_support(y_test, y_pred, average=None)
+                
+                results[f"{resampler_name}_{clf_name}"] = {
+                    'pipeline': pipeline,
+                    'accuracy': accuracy,
+                    'precision_per_class': precision,
+                    'recall_per_class': recall,
+                    'f1_per_class': f1,
+                    'f1_macro': f1_score(y_test, y_pred, average='macro')
+                }
+                
+                cm = confusion_matrix(y_test, y_pred)
+                plt.figure(figsize=(8, 6))
+                sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
+                           xticklabels=class_names, 
+                           yticklabels=class_names)
+                plt.title(f'{resampler_name} with {clf_name} - Confusion Matrix')
+                plt.xlabel('Predicted')
+                plt.ylabel('Actual')
+                plt.tight_layout()
+                plt.show()
+                
+                print(f"Accuracy: {accuracy:.4f}")
+                print(f"Macro F1: {results[f'{resampler_name}_{clf_name}']['f1_macro']:.4f}")
+                print("Classification Report:")
+                print(classification_report(y_test, y_pred, target_names=class_names))
+
+            except Exception as e:
+                print(f"Error training {resampler_name} with {clf_name}: {e}")
+                results[f"{resampler_name}_{clf_name}"] = {'error': str(e)}
     
-    # Find best method based on minority class F1 scores
     best_method = None
-    best_minority_f1 = 0
+    best_f1_macro = -1
     
+    print("\n--- Resampling Comparison Summary ---")
     for method, result in results.items():
-        # Focus on minority classes (assuming first classes are minorities)
-        minority_f1 = np.mean(result['f1'][:2])  # Adjust based on your class order
-        
-        if minority_f1 > best_minority_f1:
-            best_minority_f1 = minority_f1
-            best_method = method
+        if 'error' in result:
+            print(f"Method: {method}, Status: Error - {result['error']}")
+        else:
+            print(f"Method: {method}, Accuracy: {result['accuracy']:.4f}, Macro F1: {result['f1_macro']:.4f}")
+            if result['f1_macro'] > best_f1_macro:
+                best_f1_macro = result['f1_macro']
+                best_method = method
     
-    print(f"\nBest method: {best_method} with minority class F1: {best_minority_f1:.4f}")
+    print(f"\nBest method found: {best_method} with Macro F1: {best_f1_macro:.4f}")
     
     return results, best_method, test_data
 
@@ -296,12 +362,31 @@ class RevenueRegressionModel:
         self.model = None
         self.feature_importance = None
     
-    def train(self, X_train, y_train, param_grid=None, cv=5):
+    def train(self, X_train, y_train, param_grid=None, random_param_grid=None, cv=5, n_iter_search=20):
         """
-        Train the regression model with optional hyperparameter tuning
+        Train the regression model with optional hyperparameter tuning using RandomizedSearchCV then GridSearchCV.
         """
-        if param_grid:
-            # Perform grid search for hyperparameter tuning
+        if random_param_grid:
+            print(f"Performing RandomizedSearchCV for {self.model_name}...")
+            rand_search = RandomizedSearchCV(self.model, random_param_grid, 
+                                             n_iter=n_iter_search, cv=cv, 
+                                             scoring='neg_mean_squared_error', n_jobs=-1, random_state=42)
+            rand_search.fit(X_train, y_train)
+            best_params = rand_search.best_params_
+            print(f"Best parameters from RandomizedSearchCV for {self.model_name}: {best_params}")
+            
+            if param_grid:
+                print(f"Performing GridSearchCV for {self.model_name}...")
+                grid_search = GridSearchCV(self.model, param_grid,
+                                           cv=cv, scoring='neg_mean_squared_error', n_jobs=-1)
+                grid_search.fit(X_train, y_train)
+                self.model = grid_search.best_estimator_
+                best_params = grid_search.best_params_
+                print(f"Best parameters from GridSearchCV for {self.model_name}: {best_params}")
+            else:
+                self.model = rand_search.best_estimator_
+        elif param_grid:
+            print(f"Performing GridSearchCV for {self.model_name}...")
             grid_search = GridSearchCV(self.model, param_grid, 
                                       cv=cv, scoring='neg_mean_squared_error', n_jobs=-1)
             grid_search.fit(X_train, y_train)
@@ -309,18 +394,21 @@ class RevenueRegressionModel:
             best_params = grid_search.best_params_
             print(f"Best parameters for {self.model_name}: {best_params}")
         else:
-            # Train with default parameters
+            print(f"Training {self.model_name} with default parameters...")
             self.model.fit(X_train, y_train)
             best_params = "Default parameters used"
         
-        # Calculate feature importance
         if hasattr(self.model, 'feature_importances_'):
             self.feature_importance = pd.DataFrame({
                 'feature': X_train.columns,
                 'importance': self.model.feature_importances_
             }).sort_values('importance', ascending=False)
+        elif hasattr(self.model, 'coef_'):
+             self.feature_importance = pd.DataFrame({
+                'feature': X_train.columns,
+                'importance': np.abs(self.model.coef_)
+            }).sort_values('importance', ascending=False)
         
-        # Training metrics
         y_pred_train = self.model.predict(X_train)
         train_rmse = np.sqrt(mean_squared_error(y_train, y_pred_train))
         train_mae = mean_absolute_error(y_train, y_pred_train)
@@ -333,6 +421,7 @@ class RevenueRegressionModel:
             'train_r2': train_r2,
             'best_params': best_params
         }
+        print(f"Training Metrics for {self.model_name}: RMSE={train_rmse:.2f}, MAE={train_mae:.2f}, R2={train_r2:.4f}")
         
         return training_metrics
     
@@ -342,18 +431,21 @@ class RevenueRegressionModel:
         """
         y_pred = self.model.predict(X_test)
         
-        # Calculate metrics
         test_rmse = np.sqrt(mean_squared_error(y_test, y_pred))
         test_mae = mean_absolute_error(y_test, y_pred)
         test_r2 = r2_score(y_test, y_pred)
         
-        # Create scatter plot of actual vs predicted values
+        print(f"Evaluation Metrics for {self.model_name}: RMSE={test_rmse:.2f}, MAE={test_mae:.2f}, R2={test_r2:.4f}")
+
         plt.figure(figsize=(10, 6))
         plt.scatter(y_test, y_pred, alpha=0.5)
-        plt.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'r--')
+        max_val = max(y_test.max(), y_pred.max())
+        min_val = min(y_test.min(), y_pred.min())
+        plt.plot([min_val, max_val], [min_val, max_val], 'r--')
         plt.xlabel('Actual Revenue')
         plt.ylabel('Predicted Revenue')
         plt.title(f'{self.model_name} - Actual vs Predicted Revenue')
+        plt.grid(True, linestyle='--', alpha=0.6)
         plt.show()
         
         evaluation_metrics = {
@@ -365,23 +457,27 @@ class RevenueRegressionModel:
         
         return evaluation_metrics
     
-    def save_model(self, model_dir='models/regression'):
+    def save_model(self, model_dir='models/regression', _scaler_obj=None):
         """
-        Save the trained model and feature importance to disk
+        Save the trained model, feature importance, and scaler to disk.
         """
         os.makedirs(model_dir, exist_ok=True)
         
-        # Save model
         model_path = os.path.join(model_dir, f"{self.model_name}.pkl")
         with open(model_path, 'wb') as f:
             pickle.dump(self.model, f)
         
-        # Save feature importance if available
-        if self.feature_importance is not None:
+        if _scaler_obj is not None:
+            # Scaler should only be saved once, typically in the regression model folder
+            scaler_path = os.path.join(model_dir, 'scaler.pkl')
+            with open(scaler_path, 'wb') as f:
+                pickle.dump(_scaler_obj, f)
+            print(f"Scaler saved to {scaler_path}")
+
+        if self.feature_importance is not None and not self.feature_importance.empty:
             importance_path = os.path.join(model_dir, f"{self.model_name}_feature_importance.csv")
             self.feature_importance.to_csv(importance_path, index=False)
             
-            # Create feature importance plot
             plt.figure(figsize=(12, 8))
             top_features = self.feature_importance.head(15)
             sns.barplot(x='importance', y='feature', data=top_features)
@@ -394,24 +490,29 @@ class RevenueRegressionModel:
 
 class RandomForestRevenueRegressor(RevenueRegressionModel):
     """Random Forest model for revenue regression"""
-    def __init__(self, n_estimators=100, max_depth=None, random_state=42):
+    def __init__(self, n_estimators=100, max_depth=None, min_samples_split=2, random_state=42):
         super().__init__("random_forest_regressor")
         self.model = RandomForestRegressor(
             n_estimators=n_estimators,
             max_depth=max_depth,
-            random_state=random_state
+            min_samples_split=min_samples_split,
+            random_state=random_state,
+            n_jobs=-1
         )
 
 
 class XGBoostRevenueRegressor(RevenueRegressionModel):
     """XGBoost model for revenue regression"""
-    def __init__(self, n_estimators=100, max_depth=3, learning_rate=0.1, random_state=42):
+    def __init__(self, n_estimators=100, max_depth=3, learning_rate=0.1, subsample=1, colsample_bytree=1, random_state=42):
         super().__init__("xgboost_regressor")
         self.model = xgb.XGBRegressor(
             n_estimators=n_estimators,
             max_depth=max_depth,
             learning_rate=learning_rate,
-            random_state=random_state
+            subsample=subsample,
+            colsample_bytree=colsample_bytree,
+            random_state=random_state,
+            n_jobs=-1
         )
 
 
@@ -433,135 +534,152 @@ class ImprovedRiskClassifier:
         self.class_names = None
         self.label_encoder = None
         
-        # Initialize resampler
         if resampling.lower() == 'smote':
             self.resampler = SMOTE(random_state=42)
         elif resampling.lower() == 'smotetomek':
             self.resampler = SMOTETomek(random_state=42)
         elif resampling.lower() == 'smoteenn':
             self.resampler = SMOTEENN(random_state=42)
+        elif resampling.lower() == 'adasyn':
+            self.resampler = ADASYN(random_state=42)
+        elif resampling.lower() == 'none':
+            self.resampler = None
         else:
             raise ValueError(f"Unsupported resampling method: {resampling}")
         
-        # Initialize model
         if model_type.lower() == 'randomforest':
             self.model = RandomForestClassifier(
                 n_estimators=100,
-                class_weight='balanced_subsample',  # Try balanced_subsample instead of balanced
-                random_state=42
+                class_weight='balanced',
+                random_state=42,
+                n_jobs=-1
             )
         elif model_type.lower() == 'xgboost':
             self.model = xgb.XGBClassifier(
                 n_estimators=100,
-                scale_pos_weight=3,  # Higher weight for minority classes
                 random_state=42,
                 eval_metric='mlogloss',
-                use_label_encoder=False
+                use_label_encoder=False,
+                n_jobs=-1
             )
         else:
             raise ValueError(f"Unsupported model type: {model_type}")
     
-    def train(self, X_train, y_train, class_names=None, param_grid=None):
+    def train(self, X_train, y_train, class_names=None, param_grid=None, random_param_grid=None, n_iter_search=20):
         """
-        Train model with focus on minority class performance
-        
-        Args:
-            X_train: Feature matrix
-            y_train: Target vector
-            class_names: List of class names (optional)
-            param_grid: Parameter grid for hyperparameter tuning (optional)
-            
-        Returns:
-            Self for method chaining
+        Train model with focus on minority class performance.
+        Supports RandomizedSearchCV followed by GridSearchCV.
         """
         self.class_names = class_names
         
-        # Create pipeline with resampling
-        self.pipeline = ImbPipeline([
-            ('resampler', self.resampler),
-            ('classifier', self.model)
-        ])
+        steps = []
+        if self.resampler:
+            steps.append(('resampler', self.resampler))
+        steps.append(('classifier', self.model))
         
-        if param_grid:
-            # Add prefix to parameter names for GridSearchCV
-            grid_params = {}
-            for param, values in param_grid.items():
-                grid_params[f'classifier__{param}'] = values
-            
-            # Use stratified cross-validation
-            cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-            
-            # Grid search with focus on minority class F1
+        self.pipeline = ImbPipeline(steps)
+        
+        cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+        scoring_metric = make_scorer(f1_score, average='macro')
+        best_params = {}
+
+        if random_param_grid:
+            print(f"Performing RandomizedSearchCV for classification model ({self.model_type})...")
+            rand_search = RandomizedSearchCV(
+                self.pipeline, 
+                random_param_grid,
+                n_iter=n_iter_search,
+                cv=cv, 
+                scoring=scoring_metric,
+                n_jobs=-1,
+                random_state=42,
+                error_score=0
+            )
+            rand_search.fit(X_train, y_train)
+            self.pipeline = rand_search.best_estimator_
+            best_params = rand_search.best_params_
+            print(f"Best parameters from RandomizedSearchCV for {self.model_type}: {best_params}")
+
+            if param_grid:
+                print(f"Performing GridSearchCV for classification model ({self.model_type})...")
+                grid_search = GridSearchCV(
+                    self.pipeline, 
+                    param_grid,
+                    cv=cv, 
+                    scoring=scoring_metric,
+                    n_jobs=-1,
+                    error_score=0
+                )
+                grid_search.fit(X_train, y_train)
+                self.pipeline = grid_search.best_estimator_
+                best_params = grid_search.best_params_
+                print(f"Best parameters from GridSearchCV for {self.model_type}: {best_params}")
+        elif param_grid:
+            print(f"Performing GridSearchCV for classification model ({self.model_type})...")
             grid_search = GridSearchCV(
                 self.pipeline, 
-                grid_params,
+                param_grid,
                 cv=cv, 
-                scoring='f1_macro',  # Use macro F1 to focus on all classes equally
-                n_jobs=-1
+                scoring=scoring_metric,
+                n_jobs=-1,
+                error_score=0
             )
-            
             grid_search.fit(X_train, y_train)
             self.pipeline = grid_search.best_estimator_
-            
-            print(f"Best parameters: {grid_search.best_params_}")
+            best_params = grid_search.best_params_
+            print(f"Best parameters from GridSearchCV: {best_params}")
         else:
+            print(f"Training {self.model_type} classifier with default parameters (no tuning)...")
             self.pipeline.fit(X_train, y_train)
+            best_params = "Default parameters used"
         
-        # Get feature importances from the classifier in the pipeline
-        if hasattr(self.pipeline.named_steps['classifier'], 'feature_importances_'):
+        classifier_model = self.pipeline.named_steps['classifier']
+        if hasattr(classifier_model, 'feature_importances_'):
             self.feature_importance = pd.DataFrame({
                 'feature': X_train.columns,
-                'importance': self.pipeline.named_steps['classifier'].feature_importances_
+                'importance': classifier_model.feature_importances_
+            }).sort_values('importance', ascending=False)
+        elif hasattr(classifier_model, 'coef_'):
+             self.feature_importance = pd.DataFrame({
+                'feature': X_train.columns,
+                'importance': np.abs(classifier_model.coef_[0] if classifier_model.coef_.ndim > 1 else classifier_model.coef_)
             }).sort_values('importance', ascending=False)
         
-        # Evaluate on training data
         y_pred_train = self.pipeline.predict(X_train)
         train_acc = accuracy_score(y_train, y_pred_train)
         
         print(f"Training accuracy: {train_acc:.4f}")
+        print(f"Training Macro F1: {f1_score(y_train, y_pred_train, average='macro'):.4f}")
         return self
     
     def evaluate(self, X_test, y_test):
         """
         Detailed evaluation with focus on per-class metrics
-        
-        Args:
-            X_test: Test feature matrix
-            y_test: Test target vector
-            
-        Returns:
-            Dict containing evaluation metrics
         """
         y_pred = self.pipeline.predict(X_test)
         
-        # Calculate overall metrics
         accuracy = accuracy_score(y_test, y_pred)
         
-        # Calculate per-class metrics
-        precision, recall, f1, support = precision_recall_fscore_support(y_test, y_pred)
+        precision, recall, f1, support = precision_recall_fscore_support(y_test, y_pred, average=None, zero_division=0)
         
-        # Display confusion matrix with better visualization
         plt.figure(figsize=(10, 8))
         conf_matrix = confusion_matrix(y_test, y_pred)
         
-        # Normalize confusion matrix for better visualization
         conf_matrix_norm = conf_matrix.astype('float') / conf_matrix.sum(axis=1)[:, np.newaxis]
+        conf_matrix_norm[np.isnan(conf_matrix_norm)] = 0
         
-        # Plot confusion matrix
-        sns.heatmap(conf_matrix_norm, annot=conf_matrix, 
+        sns.heatmap(conf_matrix_norm, annot=conf_matrix,
                     fmt='d', cmap='Blues', xticklabels=self.class_names, 
-                    yticklabels=self.class_names)
-        plt.title('Confusion Matrix')
+                    yticklabels=self.class_names, cbar=True, linewidths=.5, linecolor='black')
+        plt.title('Confusion Matrix (Normalized & Raw Counts)')
         plt.xlabel('Predicted Label')
         plt.ylabel('True Label')
         plt.tight_layout()
         plt.show()
         
-        # Display classification report
         print("\nClassification Report:")
-        print(classification_report(y_test, y_pred, target_names=self.class_names))
+        print(classification_report(y_test, y_pred, target_names=self.class_names, zero_division=0))
         
-        # Create a DataFrame for per-class metrics for better visualization
         class_metrics = pd.DataFrame({
             'Class': self.class_names,
             'Precision': precision,
@@ -569,8 +687,9 @@ class ImprovedRiskClassifier:
             'F1-Score': f1,
             'Support': support
         })
+        print("\nPer-Class Metrics:")
+        print(class_metrics)
         
-        # Plot per-class metrics
         plt.figure(figsize=(12, 6))
         metrics_melted = pd.melt(class_metrics, id_vars=['Class'], 
                                 value_vars=['Precision', 'Recall', 'F1-Score'],
@@ -578,6 +697,7 @@ class ImprovedRiskClassifier:
         sns.barplot(x='Class', y='Score', hue='Metric', data=metrics_melted)
         plt.title('Performance Metrics by Class')
         plt.ylim(0, 1)
+        plt.xticks(rotation=45, ha='right')
         plt.tight_layout()
         plt.show()
         
@@ -586,30 +706,32 @@ class ImprovedRiskClassifier:
             'per_class_metrics': class_metrics
         }
     
-    def save_model(self, filepath='models/classification/improved_classifier.pkl'):
+    def save_model(self, filepath='models/classification/improved_classifier.pkl', _scaler_obj=None):
         """
         Save the trained model to disk
-        
-        Args:
-            filepath: Path to save the model
-            
-        Returns:
-            Self for method chaining
         """
         os.makedirs(os.path.dirname(filepath), exist_ok=True)
         with open(filepath, 'wb') as f:
             pickle.dump(self.pipeline, f)
         
-        if self.feature_importance is not None:
-            # Save feature importance
+        # Scaler hanya perlu disimpan sekali, di folder regresi.
+        # Logic di main() akan memastikan ini hanya dipanggil satu kali.
+        if _scaler_obj is not None:
+            scaler_dir = 'models/regression' # Path tetap ke folder regresi
+            os.makedirs(scaler_dir, exist_ok=True)
+            scaler_path = os.path.join(scaler_dir, 'scaler.pkl')
+            with open(scaler_path, 'wb') as f:
+                pickle.dump(_scaler_obj, f)
+            print(f"Scaler saved to {scaler_path}")
+        
+        if self.feature_importance is not None and not self.feature_importance.empty:
             importance_path = filepath.replace('.pkl', '_importance.csv')
             self.feature_importance.to_csv(importance_path, index=False)
             
-            # Plot feature importance
             plt.figure(figsize=(12, 8))
             top_features = self.feature_importance.head(15)
             sns.barplot(x='importance', y='feature', data=top_features)
-            plt.title('Top 15 Feature Importance')
+            plt.title(f'Top 10 Feature Importance - {self.model_type.capitalize()} Classifier')
             plt.tight_layout()
             plt.show()
         
@@ -619,12 +741,6 @@ class ImprovedRiskClassifier:
     def predict(self, X):
         """
         Make predictions with the trained model
-        
-        Args:
-            X: Feature matrix
-            
-        Returns:
-            Predicted classes
         """
         if self.pipeline is None:
             raise ValueError("Model has not been trained yet")
@@ -634,12 +750,6 @@ class ImprovedRiskClassifier:
     def predict_proba(self, X):
         """
         Get class probabilities
-        
-        Args:
-            X: Feature matrix
-            
-        Returns:
-            Class probabilities
         """
         if self.pipeline is None:
             raise ValueError("Model has not been trained yet")
@@ -649,54 +759,54 @@ class ImprovedRiskClassifier:
 
 # ===================== PREDICTION FUNCTIONS =====================
 
-def predict_movie_performance(input_data, regression_model, classification_model, label_encoder=None, output_file_path=None):
+def predict_movie_performance(input_data: pd.DataFrame, regression_model: RevenueRegressionModel, classification_model: ImprovedRiskClassifier, label_encoder: LabelEncoder, _scaler_obj: StandardScaler, output_file_path=None) -> pd.DataFrame:
     """
-    Generate predictions using trained models
+    Generate predictions using trained models.
     
     Args:
-        input_data: DataFrame with movie features
-        regression_model: Trained regression model
-        classification_model: Trained classification model
+        input_data: DataFrame with raw movie data (same format as initial df loaded)
+        regression_model: Trained regression model instance (e.g., RandomForestRevenueRegressor)
+        classification_model: Trained classification model instance (e.g., ImprovedRiskClassifier)
         label_encoder: Label encoder for class mapping
+        _scaler_obj: The fitted StandardScaler object used during training.
         output_file_path: Path to save predictions (optional)
     
     Returns:
         DataFrame with predictions
     """
-    # Preprocess data
-    processed_df = preprocess_data(input_data)
+    if regression_model.model is None or classification_model.pipeline is None:
+        raise ValueError("Both regression and classification models must be trained before predicting.")
+
+    results_df = input_data.copy()
+
+    processed_for_prediction = preprocess_data(input_data.copy())
     
-    # Extract features
-    X, _, _ = split_features_target(processed_df)
-    
-    # Generate predictions
+    # Lewatkan _scaler_obj ke split_features_target untuk penskalaan input
+    X_predict, _, _, _ = split_features_target(processed_for_prediction.copy(), _scaler=_scaler_obj)
+
+    training_feature_cols = regression_model.model.feature_names_in_ if hasattr(regression_model.model, 'feature_names_in_') else classification_model.pipeline.named_steps['classifier'].feature_names_in_
+
+    if training_feature_cols is not None:
+        missing_cols = set(training_feature_cols) - set(X_predict.columns)
+        for c in missing_cols:
+            X_predict[c] = 0
+        X_predict = X_predict[training_feature_cols]
+    else:
+        print("Warning: Could not retrieve feature names from trained models. Ensure prediction data has the same columns as training data.")
+
     print("Generating predictions...")
     
-    # Revenue prediction
-    revenue_predictions = regression_model.model.predict(X)
+    revenue_predictions = regression_model.model.predict(X_predict)
     
-    # Risk classification
-    if hasattr(classification_model, 'pipeline'):
-        risk_class_encoded = classification_model.predict(X)
-        # Convert encoded classes back to original labels if encoder is provided
-        if label_encoder is not None:
-            risk_predictions = label_encoder.inverse_transform(risk_class_encoded)
-        else:
-            risk_predictions = risk_class_encoded
-    else:
-        risk_predictions = classification_model.model.predict(X)
-        if label_encoder is not None:
-            risk_predictions = label_encoder.inverse_transform(risk_predictions)
+    risk_class_encoded = classification_model.predict(X_predict)
+    risk_predictions = label_encoder.inverse_transform(risk_class_encoded)
     
-    # Create result dataframe
-    results_df = input_data.copy()
     results_df['predicted_revenue'] = revenue_predictions
     results_df['predicted_risk'] = risk_predictions
     
-    # Calculate predicted ROI
-    results_df['predicted_roi'] = ((results_df['predicted_revenue'] - results_df['budget']) / results_df['budget']) * 100
+    original_budget_for_roi = results_df['budget'].replace(0, 1)
+    results_df['predicted_roi'] = ((results_df['predicted_revenue'] - results_df['budget']) / original_budget_for_roi) * 100
     
-    # Save predictions if output path is provided
     if output_file_path:
         print(f"Saving predictions to {output_file_path}...")
         results_df.to_csv(output_file_path, index=False)
@@ -709,60 +819,215 @@ def predict_movie_performance(input_data, regression_model, classification_model
 def main():
     """Main execution function"""
     
-    # Load the data
     print("Loading data...")
-    df = pd.read_csv("data/raw/data_mentah.csv")
+    try:
+        df = pd.read_csv("data/raw/data_mentah.csv")
+    except FileNotFoundError:
+        print("Error: data/raw/data_mentah.csv not found. Please ensure the file exists.")
+        return
     print(f"Loaded data with {len(df)} records")
     
-    # Preprocess data
     print("\nPreprocessing data...")
     processed_df = preprocess_data(df)
     print(f"Processed data with {processed_df.shape[1]} features")
     
-    # Display ROI category distribution
+    # START UBAH BAGIAN INI
+    # Kategori ROI yang baru
+    expected_roi_categories = [
+        'Extreme Loss',
+        'Significant Loss',
+        'Marginal Profit',
+        'Good Profit',
+        'Blockbuster/High Profit'
+    ]
+    # END UBAH BAGIAN INI
     category_counts = processed_df['ROI_category'].value_counts().reindex(
-        ['High Risk', 'Medium Risk', 'Low Risk', 'No Risk'], fill_value=0
+        expected_roi_categories, fill_value=0
     )
-    print("\nROI Category distribution:")
+    print("\nROI Category distribution (after preprocessing):")
     print(category_counts)
     
-    # Plot ROI category distribution
     plt.figure(figsize=(10, 6))
-    sns.barplot(x=category_counts.index, y=category_counts.values)
-    plt.title('Distribution of ROI Categories')
+    sns.barplot(x=category_counts.index, y=category_counts.values, palette='viridis')
+    plt.title('Distribution of ROI Categories (After Preprocessing)')
     plt.xlabel('Risk Category')
     plt.ylabel('Count')
+    plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
     plt.show()
     
-    # Split features and targets
-    X, y_regression, y_classification = split_features_target(processed_df)
+    # Split features and targets, dan dapatkan _scaler yang dilatih
+    X, y_regression, y_classification, global_scaler = split_features_target(processed_df)
     
-    # Encode ROI_category for classification
     label_encoder = LabelEncoder()
     y_class_encoded = label_encoder.fit_transform(y_classification)
     class_names = label_encoder.classes_
-    
-    # Split data for regression model
+    print(f"\nEncoded ROI categories (order for model): {list(class_names)}")
+
     X_reg_train, X_reg_test, y_reg_train, y_reg_test = train_test_split(
         X, y_regression, test_size=0.2, random_state=42
     )
     
-    # Split data with stratification for classification model
     X_cls_train, X_cls_test, y_cls_train, y_cls_test = train_test_split(
         X, y_class_encoded, test_size=0.2, random_state=42, stratify=y_class_encoded
     )
     
-    # ----- FIND OPTIMAL RESAMPLING TECHNIQUE -----
-    print("\n===== Finding Best Resampling Method for Classification =====")
-    # Uncomment to run the full resampling comparison (can be time-consuming)
-    # results, best_method, test_data = find_best_resampling(X, y_class_encoded, class_names)
-    # resampling_technique, model_type = best_method.split('_')
+    chosen_resampling_for_classifiers = 'smotetomek'
+    print(f"\nUsing pre-selected resampling for all classifiers: {chosen_resampling_for_classifiers}")
+
+    print(f"Applying {chosen_resampling_for_classifiers} to classification training data...")
+    resampler_final = None
+    if chosen_resampling_for_classifiers.lower() == 'smote':
+        resampler_final = SMOTE(random_state=42)
+    elif chosen_resampling_for_classifiers.lower() == 'smotetomek':
+        resampler_final = SMOTETomek(random_state=42)
+    elif chosen_resampling_for_classifiers.lower() == 'smoteenn':
+        resampler_final = SMOTEENN(random_state=42)
+    elif chosen_resampling_for_classifiers.lower() == 'adasyn':
+        resampler_final = ADASYN(random_state=42)
+    elif chosen_resampling_for_classifiers.lower() == 'none':
+        print("No resampling applied for classification.")
+    else:
+        raise ValueError(f"Unknown final resampling technique: {chosen_resampling_for_classifiers}")
     
-    # Based on previous runs, we'll use SMOTETomek with XGBoost
-    resampling_technique = 'smotetomek'
-    model_type = 'xgboost'
-    print(f"Using {resampling_technique} with {model_type} based on previous results")
+    if resampler_final:
+        X_cls_resampled, y_cls_resampled = resampler_final.fit_resample(X_cls_train, y_cls_train)
+        print(f"Classification training data after resampling: X_shape={X_cls_resampled.shape}, y_shape={y_cls_resampled.shape}")
+        plot_resampling_comparison(y_cls_train, y_cls_resampled, label_encoder)
+    else:
+        X_cls_resampled, y_cls_resampled = X_cls_train, y_cls_train
+        print("No resampling applied, using original training data for classification.")
+
+
+    print("\n===== Training Revenue Regression Models =====")
     
-    # Apply the chosen resampling technique
-    smotetomek = SMOTETomek
+    rf_regressor = RandomForestRevenueRegressor()
+    xgb_regressor = XGBoostRevenueRegressor()
+    
+    rf_random_param_grid = {
+        'n_estimators': [50, 100, 200, 300, 500],
+        'max_depth': [None, 5, 10, 15, 20, 30],
+        'min_samples_split': [2, 5, 10, 20],
+        'min_samples_leaf': [1, 2, 4, 8],
+        'max_features': [1.0, 'sqrt', 'log2']
+    }
+    rf_grid_param_grid = {
+        'n_estimators': [100, 200],
+        'max_depth': [15, 20, 25],
+        'min_samples_split': [2, 3, 5]
+    }
+    
+    xgb_random_param_grid = {
+        'n_estimators': [50, 100, 200, 300, 500],
+        'max_depth': [3, 5, 7, 9, 11],
+        'learning_rate': [0.005, 0.01, 0.05, 0.1, 0.2],
+        'subsample': [0.6, 0.7, 0.8, 0.9, 1.0],
+        'colsample_bytree': [0.6, 0.7, 0.8, 0.9, 1.0],
+        'gamma': [0, 0.1, 0.2, 0.4],
+        'reg_alpha': [0, 0.005, 0.01, 0.05],
+        'reg_lambda': [0, 0.005, 0.01, 0.05]
+    }
+    xgb_grid_param_grid = {
+        'n_estimators': [150, 200],
+        'max_depth': [5, 6, 7],
+        'learning_rate': [0.05, 0.1]
+    }
+
+    print("\nTraining Random Forest Regressor...")
+    rf_train_metrics = rf_regressor.train(X_reg_train, y_reg_train, 
+                                          param_grid=rf_grid_param_grid,
+                                          random_param_grid=rf_random_param_grid)
+    
+    print("\nTraining XGBoost Regressor...")
+    xgb_train_metrics = xgb_regressor.train(X_reg_train, y_reg_train, 
+                                            param_grid=xgb_grid_param_grid,
+                                            random_param_grid=xgb_random_param_grid)
+    
+    print("\nEvaluating Random Forest Regressor...")
+    rf_eval_metrics = rf_regressor.evaluate(X_reg_test, y_reg_test)
+    
+    print("\nEvaluating XGBoost Regressor...")
+    xgb_eval_metrics = xgb_regressor.evaluate(X_reg_test, y_reg_test)
+    
+    regression_results = pd.DataFrame([rf_eval_metrics, xgb_eval_metrics])
+    print("\nRegression Model Performance (Test Set):")
+    print(regression_results)
+    
+    print("\nSaving both regression models and scaler (scaler saved only once with RF Regressor)...")
+    rf_regressor.save_model(model_dir='models/regression', _scaler_obj=global_scaler)
+    xgb_regressor.save_model(model_dir='models/regression')
+
+
+    print("\n===== Training Risk Classification Models =====")
+    
+    cls_random_param_grid_xgb = {
+        'classifier__n_estimators': [100, 200, 300],
+        'classifier__max_depth': [3, 5, 7, 9],
+        'classifier__learning_rate': [0.01, 0.05, 0.1, 0.2],
+        'classifier__subsample': [0.7, 0.8, 0.9, 1.0],
+        'classifier__colsample_bytree': [0.7, 0.8, 0.9, 1.0],
+        'classifier__gamma': [0, 0.1, 0.2]
+    }
+    cls_grid_param_grid_xgb = {
+        'classifier__n_estimators': [150, 200],
+        'classifier__max_depth': [5, 7],
+        'classifier__learning_rate': [0.05, 0.1]
+    }
+
+    cls_random_param_grid_rf = {
+        'classifier__n_estimators': [100, 200, 300, 500],
+        'classifier__max_depth': [None, 10, 20, 30, 40],
+        'classifier__min_samples_split': [2, 5, 10, 20],
+        'classifier__min_samples_leaf': [1, 2, 4, 8],
+        'classifier__max_features': [1.0, 'sqrt', 'log2'],
+        'classifier__class_weight': ['balanced', 'balanced_subsample']
+    }
+    cls_grid_param_grid_rf = {
+        'classifier__n_estimators': [150, 200],
+        'classifier__max_depth': [20, 30],
+        'classifier__min_samples_split': [5, 10]
+    }
+
+    print(f"\nTraining and Saving XGBoost Classifier with {chosen_resampling_for_classifiers}...")
+    xgb_classifier = ImprovedRiskClassifier(model_type='xgboost', resampling=chosen_resampling_for_classifiers)
+    xgb_classifier.train(X_cls_resampled, y_cls_resampled, class_names=class_names, 
+                         param_grid=cls_grid_param_grid_xgb, random_param_grid=cls_random_param_grid_xgb)
+    xgb_classifier.evaluate(X_cls_test, y_cls_test)
+    xgb_classifier.save_model(f'models/classification/xgboost_{chosen_resampling_for_classifiers}_classifier.pkl')
+
+    print(f"\nTraining and Saving Random Forest Classifier with {chosen_resampling_for_classifiers}...")
+    rf_classifier = ImprovedRiskClassifier(model_type='randomforest', resampling=chosen_resampling_for_classifiers)
+    rf_classifier.train(X_cls_resampled, y_cls_resampled, class_names=class_names, 
+                        param_grid=cls_grid_param_grid_rf, random_param_grid=cls_random_param_grid_rf)
+    rf_classifier.evaluate(X_cls_test, y_cls_test)
+    rf_classifier.save_model(f'models/classification/random_forest_{chosen_resampling_for_classifiers}_classifier.pkl')
+
+
+    print("\n===== Making Predictions on Sample Data (for console output) =====")
+    
+    test_indices = X_reg_test.index
+    test_sample_original = df.loc[test_indices].head(10).copy()
+    
+    print("\nGenerating predictions with XGBoost Regressor and XGBoost Classifier for a sample...")
+    predictions_df = predict_movie_performance(
+        test_sample_original, 
+        xgb_regressor,
+        xgb_classifier, 
+        label_encoder,
+        global_scaler, # Lewatkan global_scaler ke fungsi prediksi
+        'output/sample_predictions.csv'
+    )
+    
+    print("\nSample predictions (first 10 rows of test set):")
+    display_cols = ['title', 'budget', 'revenue', 'predicted_revenue', 
+                   'ROI_category', 'predicted_risk', 'predicted_roi']
+    
+    actual_display_cols = [col for col in display_cols if col in predictions_df.columns]
+
+    print(predictions_df[actual_display_cols].to_string())
+    
+    print("\nModel training, evaluation, and prediction complete.")
+
+
+if __name__ == "__main__":
+    main()

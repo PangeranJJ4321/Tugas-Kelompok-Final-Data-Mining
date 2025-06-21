@@ -1,0 +1,11 @@
+title,release_date,budget,revenue,popularity,runtime,vote_average,vote_count,original_language,genres,predicted_revenue,predicted_risk,predicted_roi
+Legally Blonde,2001-07-13,18000000,141774679,9.5055,96,6.787,4123,en,"Comedy, Romance",1.3845232e+08,Blockbuster/High Profit,669.1795555555556
+"I, Tonya",2017-12-08,11000000,53900000,3.5395,120,7.485,5886,en,"Drama, Comedy",7.973893e+07,Blockbuster/High Profit,624.8993454545454
+Glengarry Glen Ross,1992-09-10,12500000,10725228,3.0437,100,7.349,1434,en,"Crime, Drama, Mystery",2.8853126e+07,Significant Loss,130.825008
+The Human Centipede 3 (Final Sequence),2015-05-22,0,16184,4.2514,103,3.7,778,en,Horror,1.4807072e+07,Extreme Loss,1480707200.0
+National Lampoon's Van Wilder,2002-03-29,6000000,39241323,2.9325,92,6.027,1810,en,"Comedy, Romance",7.7161736e+07,Blockbuster/High Profit,1186.0289333333335
+Contempt,1963-10-29,900000,528428,1.6044,103,7.1,854,fr,"Drama, Romance",-1.227953e+06,Significant Loss,-236.4392222222222
+Paranormal Activity,2007-09-14,215000,193355800,5.5605,86,6.012,5100,en,"Horror, Mystery",1.3422926e+08,Blockbuster/High Profit,62332.21581395349
+Saint Maud,2020-10-09,0,1640866,3.2146,85,6.583,756,en,"Horror, Mystery, Thriller",1.099195e+07,Extreme Loss,1099195000.0
+Alien: Romulus,2024-08-13,80000000,350865342,28.1137,119,7.21,3493,en,"Horror, Science Fiction",4.6089962e+08,Blockbuster/High Profit,476.12452
+Sully,2016-09-07,60000000,240800000,4.2695,96,7.195,7308,en,"Drama, History",1.804236e+08,Blockbuster/High Profit,200.70600000000002
