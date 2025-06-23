@@ -46,12 +46,14 @@ st.markdown("""
         backdrop-filter: blur(10px);
         border-radius: 15px;
         padding: 20px;
+        font-size: 6px;
         margin: 10px 0;
         border: 1px solid rgba(255,255,255,0.2);
         box-shadow: 0 8px 32px rgba(31,38,135,0.37);
         color: white; /* Text color for metric cards */
     }
     .stMetric {
+        font-size: 12px;
         color: white; /* Ensure metric values are white */
     }
 
@@ -502,7 +504,7 @@ st.markdown('<div class="info-box"><p style="text-align: center; font-size: 1.1r
 st.sidebar.markdown("# 🎯 Navigasi & Pengaturan")
 page = st.sidebar.radio(
     "**Pilih Halaman**",
-    ["🏠 Ikhtisar Data", "📊 Performa Model", "🔮 Buat Prediksi"],
+    ["🏠 Ikhtisar Data", "🔮 Buat Prediksi"],
     index=0
 )
 
@@ -648,256 +650,256 @@ if page == "🏠 Ikhtisar Data":
 
 
 # --- Halaman 2: Performa Model ---
-elif page == "📊 Performa Model":
-    st.markdown('<h2 class="sub-header">🚀 Perbandingan Performa Model Machine Learning</h2>', unsafe_allow_html=True)
-    st.markdown('<div class="info-box">Evaluasi performa model klasifikasi (untuk risiko ROI) dan model regresi (untuk pendapatan) menggunakan metrik standar.</div>', unsafe_allow_html=True)
+# elif page == "📊 Performa Model":
+#     st.markdown('<h2 class="sub-header">🚀 Perbandingan Performa Model Machine Learning</h2>', unsafe_allow_html=True)
+#     st.markdown('<div class="info-box">Evaluasi performa model klasifikasi (untuk risiko ROI) dan model regresi (untuk pendapatan) menggunakan metrik standar.</div>', unsafe_allow_html=True)
 
-    st.markdown('<h3 class="sub-header">🎯 Evaluasi Model Klasifikasi (Prediksi Kategori ROI)</h3>', unsafe_allow_html=True)
-    col_cls_metrics, col_cls_plot = st.columns(2)
+#     st.markdown('<h3 class="sub-header">🎯 Evaluasi Model Klasifikasi (Prediksi Kategori ROI)</h3>', unsafe_allow_html=True)
+#     col_cls_metrics, col_cls_plot = st.columns(2)
 
-    with col_cls_metrics:
-        st.markdown("<h4 style='color:white;'>Akurasi Model Klasifikasi</h4>", unsafe_allow_html=True)
+#     with col_cls_metrics:
+#         st.markdown("<h4 style='color:white;'>Akurasi Model Klasifikasi</h4>", unsafe_allow_html=True)
 
-        rf_cls_accuracy = None
-        xgb_cls_accuracy = None
+#         rf_cls_accuracy = None
+#         xgb_cls_accuracy = None
 
-        if models['rf_classifier'] is not None:
-            y_pred_rf_cls = models['rf_classifier'].predict(X_test)
-            rf_cls_accuracy = accuracy_score(y_cls_test_encoded, y_pred_rf_cls)
-            st.markdown(f'<div class="success-box"><strong>Random Forest Classifier Akurasi:</strong> `{rf_cls_accuracy:.4f}`</div>', unsafe_allow_html=True)
-        else:
-            st.markdown('<div class="warning-box">Random Forest Classifier tidak dimuat.</div>', unsafe_allow_html=True)
+#         if models['rf_classifier'] is not None:
+#             y_pred_rf_cls = models['rf_classifier'].predict(X_test)
+#             rf_cls_accuracy = accuracy_score(y_cls_test_encoded, y_pred_rf_cls)
+#             st.markdown(f'<div class="success-box"><strong>Random Forest Classifier Akurasi:</strong> `{rf_cls_accuracy:.4f}`</div>', unsafe_allow_html=True)
+#         else:
+#             st.markdown('<div class="warning-box">Random Forest Classifier tidak dimuat.</div>', unsafe_allow_html=True)
 
-        if models['xgb_classifier'] is not None:
-            y_pred_xgb_cls = models['xgb_classifier'].predict(X_test)
-            xgb_cls_accuracy = accuracy_score(y_cls_test_encoded, y_pred_xgb_cls)
-            st.markdown(f'<div class="success-box"><strong>XGBoost Classifier Akurasi:</strong> `{xgb_cls_accuracy:.4f}`</div>', unsafe_allow_html=True)
-        else:
-            st.markdown('<div class="warning-box">XGBoost Classifier tidak dimuat.</div>', unsafe_allow_html=True)
+#         if models['xgb_classifier'] is not None:
+#             y_pred_xgb_cls = models['xgb_classifier'].predict(X_test)
+#             xgb_cls_accuracy = accuracy_score(y_cls_test_encoded, y_pred_xgb_cls)
+#             st.markdown(f'<div class="success-box"><strong>XGBoost Classifier Akurasi:</strong> `{xgb_cls_accuracy:.4f}`</div>', unsafe_allow_html=True)
+#         else:
+#             st.markdown('<div class="warning-box">XGBoost Classifier tidak dimuat.</div>', unsafe_allow_html=True)
 
-        cls_models_names = []
-        cls_accuracy_scores = []
-        if rf_cls_accuracy is not None:
-            cls_models_names.append("Random Forest")
-            cls_accuracy_scores.append(rf_cls_accuracy)
-        if xgb_cls_accuracy is not None:
-            cls_models_names.append("XGBoost")
-            cls_accuracy_scores.append(xgb_cls_accuracy)
+#         cls_models_names = []
+#         cls_accuracy_scores = []
+#         if rf_cls_accuracy is not None:
+#             cls_models_names.append("Random Forest")
+#             cls_accuracy_scores.append(rf_cls_accuracy)
+#         if xgb_cls_accuracy is not None:
+#             cls_models_names.append("XGBoost")
+#             cls_accuracy_scores.append(xgb_cls_accuracy)
 
-        if cls_models_names:
-            st.markdown('<div class="plot-container">', unsafe_allow_html=True)
-            fig_cls_bar, ax_cls_bar = plt.subplots(figsize=(7, 4))
-            sns.barplot(x=cls_models_names, y=cls_accuracy_scores, palette='coolwarm', ax=ax_cls_bar)
-            ax_cls_bar.set_title('Perbandingan Akurasi Model Klasifikasi', fontsize=14, color='black')
-            ax_cls_bar.set_ylim(0, 1)
-            ax_cls_bar.set_ylabel('Akurasi', fontsize=12, color='black')
-            ax_cls_bar.tick_params(axis='x', colors='black')
-            ax_cls_bar.tick_params(axis='y', colors='black')
-            ax_cls_bar.set_facecolor('#f8f9fa') # Set plot background
-            plt.tight_layout()
-            st.pyplot(fig_cls_bar)
-            st.markdown('</div>', unsafe_allow_html=True)
-            st.markdown('<div class="info-box">Grafik ini menunjukkan akurasi model klasifikasi pada data uji. Akurasi adalah proporsi prediksi yang benar dari total prediksi.</div>', unsafe_allow_html=True)
-        else:
-            st.markdown('<div class="info-box">Tidak ada model klasifikasi yang tersedia untuk perbandingan akurasi.</div>', unsafe_allow_html=True)
+#         if cls_models_names:
+#             st.markdown('<div class="plot-container">', unsafe_allow_html=True)
+#             fig_cls_bar, ax_cls_bar = plt.subplots(figsize=(7, 4))
+#             sns.barplot(x=cls_models_names, y=cls_accuracy_scores, palette='coolwarm', ax=ax_cls_bar)
+#             ax_cls_bar.set_title('Perbandingan Akurasi Model Klasifikasi', fontsize=14, color='black')
+#             ax_cls_bar.set_ylim(0, 1)
+#             ax_cls_bar.set_ylabel('Akurasi', fontsize=12, color='black')
+#             ax_cls_bar.tick_params(axis='x', colors='black')
+#             ax_cls_bar.tick_params(axis='y', colors='black')
+#             ax_cls_bar.set_facecolor('#f8f9fa') # Set plot background
+#             plt.tight_layout()
+#             st.pyplot(fig_cls_bar)
+#             st.markdown('</div>', unsafe_allow_html=True)
+#             st.markdown('<div class="info-box">Grafik ini menunjukkan akurasi model klasifikasi pada data uji. Akurasi adalah proporsi prediksi yang benar dari total prediksi.</div>', unsafe_allow_html=True)
+#         else:
+#             st.markdown('<div class="info-box">Tidak ada model klasifikasi yang tersedia untuk perbandingan akurasi.</div>', unsafe_allow_html=True)
 
-    with col_cls_plot:
-        st.markdown("<h4 style='color:white;'>Laporan Klasifikasi & Confusion Matrix (XGBoost Classifier)</h4>", unsafe_allow_html=True)
-        if models['xgb_classifier'] is not None and 'y_pred_xgb_cls' in locals():
-            st.markdown('<div class="info-box">Laporan Klasifikasi:</div>', unsafe_allow_html=True)
-            y_pred_xgb_cls_decoded = label_encoder.inverse_transform(y_pred_xgb_cls)
-            y_cls_test_decoded = label_encoder.inverse_transform(y_cls_test_encoded)
-            st.code(classification_report(y_cls_test_decoded, y_pred_xgb_cls_decoded, target_names=ALL_ROI_CATEGORIES_ORDERED, zero_division=0))
+#     with col_cls_plot:
+#         st.markdown("<h4 style='color:white;'>Laporan Klasifikasi & Confusion Matrix (XGBoost Classifier)</h4>", unsafe_allow_html=True)
+#         if models['xgb_classifier'] is not None and 'y_pred_xgb_cls' in locals():
+#             st.markdown('<div class="info-box">Laporan Klasifikasi:</div>', unsafe_allow_html=True)
+#             y_pred_xgb_cls_decoded = label_encoder.inverse_transform(y_pred_xgb_cls)
+#             y_cls_test_decoded = label_encoder.inverse_transform(y_cls_test_encoded)
+#             st.code(classification_report(y_cls_test_decoded, y_pred_xgb_cls_decoded, target_names=ALL_ROI_CATEGORIES_ORDERED, zero_division=0))
 
-            st.markdown('<div class="plot-container">', unsafe_allow_html=True)
-            # Pastikan labels di confusion_matrix sesuai dengan ALL_ROI_CATEGORIES_ORDERED
-            cm = confusion_matrix(y_cls_test_decoded, y_pred_xgb_cls_decoded, labels=ALL_ROI_CATEGORIES_ORDERED)
-            fig_cm, ax_cm = plt.subplots(figsize=(7, 5))
-            sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax_cm,
-                        xticklabels=ALL_ROI_CATEGORIES_ORDERED, yticklabels=ALL_ROI_CATEGORIES_ORDERED,
-                        linewidths=.5, linecolor='black')
-            ax_cm.set_title('Confusion Matrix - XGBoost Classifier', fontsize=14, color='black')
-            ax_cm.set_xlabel('Prediksi', fontsize=12, color='black')
-            ax_cm.set_ylabel('Aktual', fontsize=12, color='black')
-            ax_cm.tick_params(axis='x', colors='black')
-            ax_cm.tick_params(axis='y', colors='black')
-            plt.tight_layout()
-            st.pyplot(fig_cm)
-            st.markdown('</div>', unsafe_allow_html=True)
-            st.markdown('<div class="info-box">Laporan klasifikasi memberikan metrik presisi, recall, dan f1-score per kelas. Confusion matrix menunjukkan jumlah prediksi benar dan salah untuk setiap kategori risiko, dengan diagonal menunjukkan prediksi yang benar.</div>', unsafe_allow_html=True)
-        else:
-            st.markdown('<div class="info-box">XGBoost Classifier tidak tersedia untuk menampilkan laporan dan confusion matrix, atau prediksinya belum dihitung.</div>', unsafe_allow_html=True)
+#             st.markdown('<div class="plot-container">', unsafe_allow_html=True)
+#             # Pastikan labels di confusion_matrix sesuai dengan ALL_ROI_CATEGORIES_ORDERED
+#             cm = confusion_matrix(y_cls_test_decoded, y_pred_xgb_cls_decoded, labels=ALL_ROI_CATEGORIES_ORDERED)
+#             fig_cm, ax_cm = plt.subplots(figsize=(7, 5))
+#             sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax_cm,
+#                         xticklabels=ALL_ROI_CATEGORIES_ORDERED, yticklabels=ALL_ROI_CATEGORIES_ORDERED,
+#                         linewidths=.5, linecolor='black')
+#             ax_cm.set_title('Confusion Matrix - XGBoost Classifier', fontsize=14, color='black')
+#             ax_cm.set_xlabel('Prediksi', fontsize=12, color='black')
+#             ax_cm.set_ylabel('Aktual', fontsize=12, color='black')
+#             ax_cm.tick_params(axis='x', colors='black')
+#             ax_cm.tick_params(axis='y', colors='black')
+#             plt.tight_layout()
+#             st.pyplot(fig_cm)
+#             st.markdown('</div>', unsafe_allow_html=True)
+#             st.markdown('<div class="info-box">Laporan klasifikasi memberikan metrik presisi, recall, dan f1-score per kelas. Confusion matrix menunjukkan jumlah prediksi benar dan salah untuk setiap kategori risiko, dengan diagonal menunjukkan prediksi yang benar.</div>', unsafe_allow_html=True)
+#         else:
+#             st.markdown('<div class="info-box">XGBoost Classifier tidak tersedia untuk menampilkan laporan dan confusion matrix, atau prediksinya belum dihitung.</div>', unsafe_allow_html=True)
 
-    st.markdown("---")
+#     st.markdown("---")
 
-    st.markdown('<h3 class="sub-header">💰 Evaluasi Model Regresi (Prediksi Pendapatan)</h3>', unsafe_allow_html=True)
-    col_reg_metrics, col_reg_plot = st.columns(2)
+#     st.markdown('<h3 class="sub-header">💰 Evaluasi Model Regresi (Prediksi Pendapatan)</h3>', unsafe_allow_html=True)
+#     col_reg_metrics, col_reg_plot = st.columns(2)
 
-    with col_reg_metrics:
-        st.markdown("<h4 style='color:white;'>Metrik Model Regresi (RMSE & R²)</h4>", unsafe_allow_html=True)
-        rf_reg_rmse, rf_reg_r2 = None, None
-        xgb_reg_rmse, xgb_reg_r2 = None, None
+#     with col_reg_metrics:
+#         st.markdown("<h4 style='color:white;'>Metrik Model Regresi (RMSE & R²)</h4>", unsafe_allow_html=True)
+#         rf_reg_rmse, rf_reg_r2 = None, None
+#         xgb_reg_rmse, xgb_reg_r2 = None, None
 
-        if models['rf_regressor'] is not None:
-            y_pred_rf_reg = models['rf_regressor'].predict(X_test)
-            rf_reg_rmse = np.sqrt(mean_squared_error(y_reg_test, y_pred_rf_reg))
-            rf_reg_r2 = r2_score(y_reg_test, y_pred_rf_reg)
-            st.markdown(f'<div class="success-box"><strong>Random Forest Regressor RMSE:</strong> `{rf_reg_rmse:,.2f}`</div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="success-box"><strong>Random Forest Regressor R²:</strong> `{rf_reg_r2:.4f}`</div>', unsafe_allow_html=True)
-        else:
-            st.markdown('<div class="warning-box">Random Forest Regressor tidak dimuat.</div>', unsafe_allow_html=True)
+#         if models['rf_regressor'] is not None:
+#             y_pred_rf_reg = models['rf_regressor'].predict(X_test)
+#             rf_reg_rmse = np.sqrt(mean_squared_error(y_reg_test, y_pred_rf_reg))
+#             rf_reg_r2 = r2_score(y_reg_test, y_pred_rf_reg)
+#             st.markdown(f'<div class="success-box"><strong>Random Forest Regressor RMSE:</strong> `{rf_reg_rmse:,.2f}`</div>', unsafe_allow_html=True)
+#             st.markdown(f'<div class="success-box"><strong>Random Forest Regressor R²:</strong> `{rf_reg_r2:.4f}`</div>', unsafe_allow_html=True)
+#         else:
+#             st.markdown('<div class="warning-box">Random Forest Regressor tidak dimuat.</div>', unsafe_allow_html=True)
 
-        if models['xgb_regressor'] is not None:
-            y_pred_xgb_reg = models['xgb_regressor'].predict(X_test)
-            xgb_reg_rmse = np.sqrt(mean_squared_error(y_reg_test, y_pred_xgb_reg))
-            xgb_reg_r2 = r2_score(y_reg_test, y_pred_xgb_reg)
-            st.markdown(f'<div class="success-box"><strong>XGBoost Regressor RMSE:</strong> `{xgb_reg_rmse:,.2f}`</div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="success-box"><strong>XGBoost Regressor R²:</strong> `{xgb_reg_r2:.4f}`</div>', unsafe_allow_html=True)
-        else:
-            st.markdown('<div class="warning-box">XGBoost Regressor tidak dimuat.</div>', unsafe_allow_html=True)
+#         if models['xgb_regressor'] is not None:
+#             y_pred_xgb_reg = models['xgb_regressor'].predict(X_test)
+#             xgb_reg_rmse = np.sqrt(mean_squared_error(y_reg_test, y_pred_xgb_reg))
+#             xgb_reg_r2 = r2_score(y_reg_test, y_pred_xgb_reg)
+#             st.markdown(f'<div class="success-box"><strong>XGBoost Regressor RMSE:</strong> `{xgb_reg_rmse:,.2f}`</div>', unsafe_allow_html=True)
+#             st.markdown(f'<div class="success-box"><strong>XGBoost Regressor R²:</strong> `{xgb_reg_r2:.4f}`</div>', unsafe_allow_html=True)
+#         else:
+#             st.markdown('<div class="warning-box">XGBoost Regressor tidak dimuat.</div>', unsafe_allow_html=True)
 
-        reg_models_names = []
-        reg_rmse_scores = []
-        reg_r2_scores = []
-        if rf_reg_rmse is not None:
-            reg_models_names.append("Random Forest")
-            reg_rmse_scores.append(rf_reg_rmse)
-            reg_r2_scores.append(rf_reg_r2)
-        if xgb_reg_rmse is not None:
-            reg_models_names.append("XGBoost")
-            reg_rmse_scores.append(xgb_reg_rmse)
-            reg_r2_scores.append(xgb_reg_r2)
+#         reg_models_names = []
+#         reg_rmse_scores = []
+#         reg_r2_scores = []
+#         if rf_reg_rmse is not None:
+#             reg_models_names.append("Random Forest")
+#             reg_rmse_scores.append(rf_reg_rmse)
+#             reg_r2_scores.append(rf_reg_r2)
+#         if xgb_reg_rmse is not None:
+#             reg_models_names.append("XGBoost")
+#             reg_rmse_scores.append(xgb_reg_rmse)
+#             reg_r2_scores.append(xgb_reg_r2)
 
-        if reg_models_names:
-            st.markdown('<div class="plot-container">', unsafe_allow_html=True)
-            fig_rmse_bar, ax_rmse_bar = plt.subplots(figsize=(7, 4))
-            sns.barplot(x=reg_models_names, y=reg_rmse_scores, palette='plasma', ax=ax_rmse_bar)
-            ax_rmse_bar.set_title('Perbandingan RMSE Model Regresi', fontsize=14, color='black')
-            ax_rmse_bar.set_ylabel('RMSE (USD)', fontsize=12, color='black')
-            ax_rmse_bar.tick_params(axis='x', colors='black')
-            ax_rmse_bar.tick_params(axis='y', colors='black')
-            ax_rmse_bar.set_facecolor('#f8f9fa')
-            plt.tight_layout()
-            st.pyplot(fig_rmse_bar)
-            st.markdown('</div>', unsafe_allow_html=True)
+#         if reg_models_names:
+#             st.markdown('<div class="plot-container">', unsafe_allow_html=True)
+#             fig_rmse_bar, ax_rmse_bar = plt.subplots(figsize=(7, 4))
+#             sns.barplot(x=reg_models_names, y=reg_rmse_scores, palette='plasma', ax=ax_rmse_bar)
+#             ax_rmse_bar.set_title('Perbandingan RMSE Model Regresi', fontsize=14, color='black')
+#             ax_rmse_bar.set_ylabel('RMSE (USD)', fontsize=12, color='black')
+#             ax_rmse_bar.tick_params(axis='x', colors='black')
+#             ax_rmse_bar.tick_params(axis='y', colors='black')
+#             ax_rmse_bar.set_facecolor('#f8f9fa')
+#             plt.tight_layout()
+#             st.pyplot(fig_rmse_bar)
+#             st.markdown('</div>', unsafe_allow_html=True)
 
-            st.markdown('<div class="plot-container">', unsafe_allow_html=True)
-            fig_r2_bar, ax_r2_bar = plt.subplots(figsize=(7, 4))
-            sns.barplot(x=reg_models_names, y=reg_r2_scores, palette='cividis', ax=ax_r2_bar)
-            ax_r2_bar.set_title('Perbandingan R² Model Regresi', fontsize=14, color='black')
-            ax_r2_bar.set_ylim(0, 1)
-            ax_r2_bar.set_ylabel('Skor R²', fontsize=12, color='black')
-            ax_r2_bar.tick_params(axis='x', colors='black')
-            ax_r2_bar.tick_params(axis='y', colors='black')
-            ax_r2_bar.set_facecolor('#f8f9fa')
-            plt.tight_layout()
-            st.pyplot(fig_r2_bar)
-            st.markdown('</div>', unsafe_allow_html=True)
-            st.markdown('<div class="info-box">RMSE (Root Mean Squared Error) mengukur rata-rata besarnya kesalahan prediksi dalam unit dolar AS (lebih rendah lebih baik). R-squared (R²) menunjukkan proporsi varians dalam variabel dependen yang dapat dijelaskan oleh model (lebih tinggi lebih baik, maksimal 1).</div>', unsafe_allow_html=True)
-        else:
-            st.markdown('<div class="info-box">Tidak ada model regresi yang tersedia untuk perbandingan metrik.</div>', unsafe_allow_html=True)
+#             st.markdown('<div class="plot-container">', unsafe_allow_html=True)
+#             fig_r2_bar, ax_r2_bar = plt.subplots(figsize=(7, 4))
+#             sns.barplot(x=reg_models_names, y=reg_r2_scores, palette='cividis', ax=ax_r2_bar)
+#             ax_r2_bar.set_title('Perbandingan R² Model Regresi', fontsize=14, color='black')
+#             ax_r2_bar.set_ylim(0, 1)
+#             ax_r2_bar.set_ylabel('Skor R²', fontsize=12, color='black')
+#             ax_r2_bar.tick_params(axis='x', colors='black')
+#             ax_r2_bar.tick_params(axis='y', colors='black')
+#             ax_r2_bar.set_facecolor('#f8f9fa')
+#             plt.tight_layout()
+#             st.pyplot(fig_r2_bar)
+#             st.markdown('</div>', unsafe_allow_html=True)
+#             st.markdown('<div class="info-box">RMSE (Root Mean Squared Error) mengukur rata-rata besarnya kesalahan prediksi dalam unit dolar AS (lebih rendah lebih baik). R-squared (R²) menunjukkan proporsi varians dalam variabel dependen yang dapat dijelaskan oleh model (lebih tinggi lebih baik, maksimal 1).</div>', unsafe_allow_html=True)
+#         else:
+#             st.markdown('<div class="info-box">Tidak ada model regresi yang tersedia untuk perbandingan metrik.</div>', unsafe_allow_html=True)
 
-    with col_reg_plot:
-        st.markdown("<h4 style='color:white;'>Plot Aktual vs Prediksi (XGBoost Regressor)</h4>", unsafe_allow_html=True)
-        if models['xgb_regressor'] is not None and 'y_pred_xgb_reg' in locals():
-            st.markdown('<div class="plot-container">', unsafe_allow_html=True)
-            fig_scatter, ax_scatter = plt.subplots(figsize=(7, 5))
-            ax_scatter.scatter(y_reg_test, y_pred_xgb_reg, alpha=0.6, color='darkblue')
-            ax_scatter.plot([y_reg_test.min(), y_reg_test.max()], [y_reg_test.min(), y_reg_test.max()], 'r--', lw=2)
-            ax_scatter.set_xlabel('Pendapatan Aktual (USD)', fontsize=12, color='black')
-            ax_scatter.set_ylabel('Pendapatan Prediksi (USD)', fontsize=12, color='black')
-            ax_scatter.set_title('Pendapatan Aktual vs Prediksi (XGBoost Regressor)', fontsize=14, color='black')
-            ax_scatter.ticklabel_format(style='plain', axis='x')
-            ax_scatter.ticklabel_format(style='plain', axis='y')
-            ax_scatter.tick_params(axis='x', colors='black')
-            ax_scatter.tick_params(axis='y', colors='black')
-            ax_scatter.set_facecolor('#f8f9fa')
-            plt.tight_layout()
-            st.pyplot(fig_scatter)
-            st.markdown('</div>', unsafe_allow_html=True)
-            st.markdown('<div class="info-box">Plot ini memvisualisasikan seberapa dekat prediksi model dengan nilai pendapatan aktual. Titik-titik yang berada di dekat garis putus-putus merah menunjukkan prediksi yang akurat.</div>', unsafe_allow_html=True)
-        else:
-            st.markdown('<div class="info-box">XGBoost Regressor tidak tersedia untuk menampilkan plot aktual vs prediksi, atau prediksinya belum dihitung.</div>', unsafe_allow_html=True)
+#     with col_reg_plot:
+#         st.markdown("<h4 style='color:white;'>Plot Aktual vs Prediksi (XGBoost Regressor)</h4>", unsafe_allow_html=True)
+#         if models['xgb_regressor'] is not None and 'y_pred_xgb_reg' in locals():
+#             st.markdown('<div class="plot-container">', unsafe_allow_html=True)
+#             fig_scatter, ax_scatter = plt.subplots(figsize=(7, 5))
+#             ax_scatter.scatter(y_reg_test, y_pred_xgb_reg, alpha=0.6, color='darkblue')
+#             ax_scatter.plot([y_reg_test.min(), y_reg_test.max()], [y_reg_test.min(), y_reg_test.max()], 'r--', lw=2)
+#             ax_scatter.set_xlabel('Pendapatan Aktual (USD)', fontsize=12, color='black')
+#             ax_scatter.set_ylabel('Pendapatan Prediksi (USD)', fontsize=12, color='black')
+#             ax_scatter.set_title('Pendapatan Aktual vs Prediksi (XGBoost Regressor)', fontsize=14, color='black')
+#             ax_scatter.ticklabel_format(style='plain', axis='x')
+#             ax_scatter.ticklabel_format(style='plain', axis='y')
+#             ax_scatter.tick_params(axis='x', colors='black')
+#             ax_scatter.tick_params(axis='y', colors='black')
+#             ax_scatter.set_facecolor('#f8f9fa')
+#             plt.tight_layout()
+#             st.pyplot(fig_scatter)
+#             st.markdown('</div>', unsafe_allow_html=True)
+#             st.markdown('<div class="info-box">Plot ini memvisualisasikan seberapa dekat prediksi model dengan nilai pendapatan aktual. Titik-titik yang berada di dekat garis putus-putus merah menunjukkan prediksi yang akurat.</div>', unsafe_allow_html=True)
+#         else:
+#             st.markdown('<div class="info-box">XGBoost Regressor tidak tersedia untuk menampilkan plot aktual vs prediksi, atau prediksinya belum dihitung.</div>', unsafe_allow_html=True)
 
-    st.markdown("---")
-    st.markdown('<h3 class="sub-header">🌟 Importansi Fitur (Top 10)</h3>', unsafe_allow_html=True)
-    st.markdown('<div class="info-box">Pilih model untuk melihat fitur-fitur yang paling berpengaruh dalam prediksinya. Fitur dengan nilai importansi yang lebih tinggi dianggap lebih penting.</div>', unsafe_allow_html=True)
+#     st.markdown("---")
+#     st.markdown('<h3 class="sub-header">🌟 Importansi Fitur (Top 10)</h3>', unsafe_allow_html=True)
+#     st.markdown('<div class="info-box">Pilih model untuk melihat fitur-fitur yang paling berpengaruh dalam prediksinya. Fitur dengan nilai importansi yang lebih tinggi dianggap lebih penting.</div>', unsafe_allow_html=True)
 
-    col_imp_reg, col_imp_cls = st.columns(2)
+#     col_imp_reg, col_imp_cls = st.columns(2)
 
-    with col_imp_reg:
-        available_reg_models = []
-        if models['xgb_regressor'] is not None:
-            available_reg_models.append("XGBoost Regressor")
-        if models['rf_regressor'] is not None:
-            available_reg_models.append("Random Forest Regressor")
+#     with col_imp_reg:
+#         available_reg_models = []
+#         if models['xgb_regressor'] is not None:
+#             available_reg_models.append("XGBoost Regressor")
+#         if models['rf_regressor'] is not None:
+#             available_reg_models.append("Random Forest Regressor")
 
-        if available_reg_models:
-            selected_reg_model_for_imp = st.selectbox(
-                "Pilih Model Regresi:",
-                available_reg_models,
-                key="select_reg_imp"
-            )
-            importance_df_reg = None
-            if selected_reg_model_for_imp == "XGBoost Regressor" and models['xgb_reg_importance'] is not None:
-                importance_df_reg = models['xgb_reg_importance']
-            elif selected_reg_model_for_imp == "Random Forest Regressor" and models['rf_reg_importance'] is not None:
-                importance_df_reg = models['rf_reg_importance']
+#         if available_reg_models:
+#             selected_reg_model_for_imp = st.selectbox(
+#                 "Pilih Model Regresi:",
+#                 available_reg_models,
+#                 key="select_reg_imp"
+#             )
+#             importance_df_reg = None
+#             if selected_reg_model_for_imp == "XGBoost Regressor" and models['xgb_reg_importance'] is not None:
+#                 importance_df_reg = models['xgb_reg_importance']
+#             elif selected_reg_model_for_imp == "Random Forest Regressor" and models['rf_reg_importance'] is not None:
+#                 importance_df_reg = models['rf_reg_importance']
 
-            if importance_df_reg is not None and not importance_df_reg.empty:
-                st.markdown('<div class="plot-container">', unsafe_allow_html=True)
-                fig_reg_imp, ax_reg_imp = plt.subplots(figsize=(8, 6))
-                sns.barplot(x='importance', y='feature', data=importance_df_reg.head(10), ax=ax_reg_imp, palette='magma')
-                ax_reg_imp.set_title(f'Top 10 Importansi Fitur - {selected_reg_model_for_imp}', fontsize=14, color='black')
-                ax_reg_imp.set_xlabel('Importansi', fontsize=12, color='black')
-                ax_reg_imp.set_ylabel('Fitur', fontsize=12, color='black')
-                ax_reg_imp.tick_params(axis='x', colors='black')
-                ax_reg_imp.tick_params(axis='y', colors='black')
-                ax_reg_imp.set_facecolor('#f8f9fa')
-                plt.tight_layout()
-                st.pyplot(fig_reg_imp)
-                st.markdown('</div>', unsafe_allow_html=True)
-            else:
-                st.markdown(f'<div class="warning-box">Data importansi fitur untuk {selected_reg_model_for_imp} tidak ditemukan atau kosong.</div>', unsafe_allow_html=True)
-        else:
-            st.markdown('<div class="info-box">Tidak ada model regresi yang tersedia untuk melihat importansi fitur.</div>', unsafe_allow_html=True)
+#             if importance_df_reg is not None and not importance_df_reg.empty:
+#                 st.markdown('<div class="plot-container">', unsafe_allow_html=True)
+#                 fig_reg_imp, ax_reg_imp = plt.subplots(figsize=(8, 6))
+#                 sns.barplot(x='importance', y='feature', data=importance_df_reg.head(10), ax=ax_reg_imp, palette='magma')
+#                 ax_reg_imp.set_title(f'Top 10 Importansi Fitur - {selected_reg_model_for_imp}', fontsize=14, color='black')
+#                 ax_reg_imp.set_xlabel('Importansi', fontsize=12, color='black')
+#                 ax_reg_imp.set_ylabel('Fitur', fontsize=12, color='black')
+#                 ax_reg_imp.tick_params(axis='x', colors='black')
+#                 ax_reg_imp.tick_params(axis='y', colors='black')
+#                 ax_reg_imp.set_facecolor('#f8f9fa')
+#                 plt.tight_layout()
+#                 st.pyplot(fig_reg_imp)
+#                 st.markdown('</div>', unsafe_allow_html=True)
+#             else:
+#                 st.markdown(f'<div class="warning-box">Data importansi fitur untuk {selected_reg_model_for_imp} tidak ditemukan atau kosong.</div>', unsafe_allow_html=True)
+#         else:
+#             st.markdown('<div class="info-box">Tidak ada model regresi yang tersedia untuk melihat importansi fitur.</div>', unsafe_allow_html=True)
 
-    with col_imp_cls:
-        available_cls_models = []
-        if models['xgb_classifier'] is not None:
-            available_cls_models.append("XGBoost Classifier")
-        if models['rf_classifier'] is not None:
-            available_cls_models.append("Random Forest Classifier")
+#     with col_imp_cls:
+#         available_cls_models = []
+#         if models['xgb_classifier'] is not None:
+#             available_cls_models.append("XGBoost Classifier")
+#         if models['rf_classifier'] is not None:
+#             available_cls_models.append("Random Forest Classifier")
 
-        if available_cls_models:
-            selected_cls_model_for_imp = st.selectbox(
-                "Pilih Model Klasifikasi:",
-                available_cls_models,
-                key="select_cls_imp"
-            )
-            importance_df_cls = None
-            if selected_cls_model_for_imp == "XGBoost Classifier" and models['xgb_cls_importance'] is not None:
-                importance_df_cls = models['xgb_cls_importance']
-            elif selected_cls_model_for_imp == "Random Forest Classifier" and models['rf_cls_importance'] is not None:
-                importance_df_cls = models['rf_cls_importance']
+#         if available_cls_models:
+#             selected_cls_model_for_imp = st.selectbox(
+#                 "Pilih Model Klasifikasi:",
+#                 available_cls_models,
+#                 key="select_cls_imp"
+#             )
+#             importance_df_cls = None
+#             if selected_cls_model_for_imp == "XGBoost Classifier" and models['xgb_cls_importance'] is not None:
+#                 importance_df_cls = models['xgb_cls_importance']
+#             elif selected_cls_model_for_imp == "Random Forest Classifier" and models['rf_cls_importance'] is not None:
+#                 importance_df_cls = models['rf_cls_importance']
 
-            if importance_df_cls is not None and not importance_df_cls.empty:
-                st.markdown('<div class="plot-container">', unsafe_allow_html=True)
-                fig_cls_imp, ax_cls_imp = plt.subplots(figsize=(8, 6))
-                sns.barplot(x='importance', y='feature', data=importance_df_cls.head(10), ax=ax_cls_imp, palette='cividis')
-                ax_cls_imp.set_title(f'Top 10 Importansi Fitur - {selected_cls_model_for_imp}', fontsize=14, color='black')
-                ax_cls_imp.set_xlabel('Importansi', fontsize=12, color='black')
-                ax_cls_imp.set_ylabel('Fitur', fontsize=12, color='black')
-                ax_cls_imp.tick_params(axis='x', colors='black')
-                ax_cls_imp.tick_params(axis='y', colors='black')
-                ax_cls_imp.set_facecolor('#f8f9fa')
-                plt.tight_layout()
-                st.pyplot(fig_cls_imp)
-                st.markdown('</div>', unsafe_allow_html=True)
-            else:
-                st.markdown(f'<div class="warning-box">Data importansi fitur untuk {selected_cls_model_for_imp} tidak ditemukan atau kosong.</div>', unsafe_allow_html=True)
-        else:
-            st.markdown('<div class="info-box">Tidak ada model klasifikasi yang tersedia untuk melihat importansi fitur.</div>', unsafe_allow_html=True)
+#             if importance_df_cls is not None and not importance_df_cls.empty:
+#                 st.markdown('<div class="plot-container">', unsafe_allow_html=True)
+#                 fig_cls_imp, ax_cls_imp = plt.subplots(figsize=(8, 6))
+#                 sns.barplot(x='importance', y='feature', data=importance_df_cls.head(10), ax=ax_cls_imp, palette='cividis')
+#                 ax_cls_imp.set_title(f'Top 10 Importansi Fitur - {selected_cls_model_for_imp}', fontsize=14, color='black')
+#                 ax_cls_imp.set_xlabel('Importansi', fontsize=12, color='black')
+#                 ax_cls_imp.set_ylabel('Fitur', fontsize=12, color='black')
+#                 ax_cls_imp.tick_params(axis='x', colors='black')
+#                 ax_cls_imp.tick_params(axis='y', colors='black')
+#                 ax_cls_imp.set_facecolor('#f8f9fa')
+#                 plt.tight_layout()
+#                 st.pyplot(fig_cls_imp)
+#                 st.markdown('</div>', unsafe_allow_html=True)
+#             else:
+#                 st.markdown(f'<div class="warning-box">Data importansi fitur untuk {selected_cls_model_for_imp} tidak ditemukan atau kosong.</div>', unsafe_allow_html=True)
+#         else:
+#             st.markdown('<div class="info-box">Tidak ada model klasifikasi yang tersedia untuk melihat importansi fitur.</div>', unsafe_allow_html=True)
 
 
 # --- Halaman 3: Buat Prediksi ---
